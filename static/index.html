@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SmartBook — AI Booking</title>
+<style>
+  :root{--bg:#0b0e14;--panel:#131722;--line:#232838;--text:#e8ebf3;--muted:#8a92a8;--accent:#5eead4;--accent2:#a78bfa;--warn:#fbbf24;--err:#fb7185;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif}
+  header{padding:22px 28px;border-bottom:1px solid var(--line)}
+  header h1{margin:0;font-size:20px;letter-spacing:.3px}
+  header span{color:var(--muted);font-size:13px}
+  .wrap{display:grid;grid-template-columns:1.1fr 1fr;gap:20px;padding:24px;max-width:1200px;margin:0 auto}
+  @media(max-width:900px){.wrap{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin-bottom:18px}
+  .card h2{margin:0 0 12px;font-size:15px;color:var(--accent)}
+  label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
+  input,select,textarea{width:100%;background:#0d1119;border:1px solid var(--line);border-radius:8px;color:var(--text);padding:9px 10px;font-size:14px}
+  textarea{min-height:64px;resize:vertical}
+  button{cursor:pointer;border:none;border-radius:8px;padding:10px 16px;font-size:14px;font-weight:600;background:var(--accent);color:#052018;margin-top:12px}
+  button.secondary{background:transparent;border:1px solid var(--line);color:var(--text)}
+  button.small{padding:6px 10px;font-size:12px;margin-top:6px}
+  .row{display:flex;gap:10px}
+  .row > *{flex:1}
+  .pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:11px;font-weight:600}
+  .pill.confirmed{background:#0f2f28;color:var(--accent)}
+  .pill.waitlisted{background:#332612;color:var(--warn)}
+  .pill.cancelled{background:#331319;color:var(--err)}
+  .pill.completed{background:#1b1f31;color:var(--accent2)}
+  .booking{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+  .booking .meta{color:var(--muted);font-size:12px;margin-top:4px}
+  .ai-note{margin-top:8px;padding:8px 10px;background:#0d1119;border-left:2px solid var(--accent2);border-radius:6px;font-size:13px}
+  .chatlog{max-height:280px;overflow-y:auto;margin-bottom:10px}
+  .msg{margin-bottom:10px;padding:9px 12px;border-radius:10px;font-size:14px}
+  .msg.user{background:#111827;margin-left:20%}
+  .msg.ai{background:#0f2f28;margin-right:20%}
+  .muted{color:var(--muted);font-size:12.5px}
+  code{background:#0d1119;padding:1px 6px;border-radius:4px}
+</style>
+</head>
+<body>
+<header>
+  <h1>SmartBook <span>&nbsp;— AI-native booking engine, powered by Groq (free tier)</span></h1>
+</header>
+
+<div class="wrap">
+  <div>
+    <div class="card">
+      <h2>💬 Book in plain English</h2>
+      <p class="muted">e.g. "Book me a haircut tomorrow around 3pm, any stylist is fine" — the AI extracts the intent, finds a slot, and books or mediates a conflict automatically.</p>
+      <div id="chatlog" class="chatlog"></div>
+      <label>Your name</label>
+      <input id="custName" placeholder="Sayantan Roy" />
+      <div class="row">
+        <div><label>Contact</label><input id="custContact" placeholder="email or phone" /></div>
+        <div><label>Reply language</label>
+          <select id="custLang">
+            <option value="en">English</option>
+            <option value="bn">Bengali (বাংলা)</option>
+            <option value="hi">Hindi</option>
+          </select>
+        </div>
+      </div>
+      <label>Message</label>
+      <textarea id="chatText" placeholder="Book me a haircut tomorrow around 3pm"></textarea>
+      <button onclick="sendAiBook()">Send</button>
+    </div>
+
+    <div class="card">
+      <h2>🔄 Reschedule by text</h2>
+      <div class="row">
+        <div><label>Booking ID</label><input id="rsBookingId" placeholder="bkg_..." /></div>
+      </div>
+      <label>What do you need?</label>
+      <textarea id="rsText" placeholder="Something came up, can we move to next week same time?"></textarea>
+      <button onclick="sendReschedule()">Reschedule</button>
+      <div id="rsResult" class="ai-note" style="display:none"></div>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <h2>🏪 Quick setup</h2>
+      <p class="muted">Create a provider + service once, then try the AI booking box on the left.</p>
+      <label>Provider name</label>
+      <input id="provName" placeholder="Studio Luna Hair" />
+      <div class="row">
+        <div><label>Outdoor service?</label>
+          <select id="provOutdoor"><option value="false">No</option><option value="true">Yes (enables weather advisory)</option></select>
+        </div>
+        <div><label>Tags (comma-separated)</label><input id="provTags" placeholder="haircut, color" /></div>
+      </div>
+      <button class="secondary small" onclick="createProvider()">Create provider</button>
+      <div id="provOut" class="muted"></div>
+
+      <label style="margin-top:16px">Service name</label>
+      <input id="svcName" placeholder="Haircut" />
+      <div class="row">
+        <div><label>Duration (min)</label><input id="svcDur" type="number" value="30" /></div>
+        <div><label>Base price</label><input id="svcPrice" type="number" value="500" /></div>
+      </div>
+      <button class="secondary small" onclick="createService()">Create service</button>
+      <div id="svcOut" class="muted"></div>
+    </div>
+
+    <div class="card">
+      <h2>📅 Bookings</h2>
+      <button class="secondary small" onclick="loadBookings()">Refresh</button>
+      <div id="bookings"></div>
+    </div>
+
+    <div class="card">
+      <h2>💰 AI pricing advisor</h2>
+      <div class="row">
+        <div><label>Service ID</label><input id="priceSvcId" placeholder="svc_..." /></div>
+        <div><label>Days out</label><input id="priceDays" type="number" value="7" /></div>
+      </div>
+      <button class="secondary small" onclick="getPricing()">Get suggestion</button>
+      <div id="priceOut" class="ai-note" style="display:none"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const api = (path, opts) => fetch(path, opts).then(async r => {
+  const j = await r.json().catch(()=>({}));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+});
+
+let lastProviderId = null, lastServiceId = null;
+
+function log(role, text){
+  const el = document.getElementById('chatlog');
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  div.textContent = text;
+  el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
+}
+
+async function createProvider(){
+  const body = {
+    name: document.getElementById('provName').value,
+    outdoor: document.getElementById('provOutdoor').value === 'true',
+    tags: document.getElementById('provTags').value.split(',').map(s=>s.trim()).filter(Boolean)
+  };
+  try{
+    const p = await api('/api/providers', {method:'POST', body: JSON.stringify(body)});
+    lastProviderId = p.id;
+    document.getElementById('provOut').textContent = 'Created: ' + p.id;
+  }catch(e){ document.getElementById('provOut').textContent = 'Error: ' + e.message; }
+}
+
+async function createService(){
+  if(!lastProviderId){ document.getElementById('svcOut').textContent = 'Create a provider first.'; return; }
+  const body = {
+    provider_id: lastProviderId,
+    name: document.getElementById('svcName').value,
+    duration_min: parseInt(document.getElementById('svcDur').value || '30'),
+    base_price: parseFloat(document.getElementById('svcPrice').value || '0'),
+    currency: 'INR'
+  };
+  try{
+    const s = await api('/api/services', {method:'POST', body: JSON.stringify(body)});
+    lastServiceId = s.id;
+    document.getElementById('svcOut').textContent = 'Created: ' + s.id;
+    document.getElementById('priceSvcId').value = s.id;
+  }catch(e){ document.getElementById('svcOut').textContent = 'Error: ' + e.message; }
+}
+
+async function sendAiBook(){
+  const text = document.getElementById('chatText').value.trim();
+  if(!text) return;
+  log('user', text);
+  document.getElementById('chatText').value = '';
+  try{
+    const res = await api('/api/ai/book', {method:'POST', body: JSON.stringify({
+      customer_name: document.getElementById('custName').value || 'Guest',
+      customer_contact: document.getElementById('custContact').value,
+      language: document.getElementById('custLang').value,
+      text
+    })});
+    if(res.clarifying_question){ log('ai', res.clarifying_question); return; }
+    log('ai', res.message + (res.booking ? ('\n' + (res.booking.confirmation || '')) : ''));
+    if(res.conflict){ log('ai', '⚠ ' + res.conflict.message + '  [conflict id: ' + res.conflict.id + ']'); }
+    loadBookings();
+  }catch(e){ log('ai', 'Error: ' + e.message); }
+}
+
+async function sendReschedule(){
+  const id = document.getElementById('rsBookingId').value.trim();
+  const text = document.getElementById('rsText').value.trim();
+  const out = document.getElementById('rsResult');
+  out.style.display = 'block';
+  try{
+    const res = await api('/api/ai/reschedule', {method:'POST', body: JSON.stringify({booking_id:id, text})});
+    out.textContent = res.message;
+    loadBookings();
+  }catch(e){ out.textContent = 'Error: ' + e.message; }
+}
+
+async function getPricing(){
+  const svc = document.getElementById('priceSvcId').value.trim();
+  const days = document.getElementById('priceDays').value || 7;
+  const out = document.getElementById('priceOut');
+  out.style.display = 'block';
+  try{
+    const res = await api('/api/ai/pricing-suggestion?service_id=' + encodeURIComponent(svc) + '&days=' + days);
+    out.textContent = `Fill rate: ${res.fill_rate_pct}% over ${res.window_days} day(s). ${res.suggestion}`;
+  }catch(e){ out.textContent = 'Error: ' + e.message; }
+}
+
+async function loadBookings(){
+  const el = document.getElementById('bookings');
+  try{
+    const list = await api('/api/bookings');
+    el.innerHTML = '';
+    if(!list.length){ el.innerHTML = '<p class="muted">No bookings yet.</p>'; return; }
+    list.slice().reverse().forEach(b => {
+      const div = document.createElement('div');
+      div.className = 'booking';
+      div.innerHTML = `<span class="pill ${b.status}">${b.status}</span> <b>${b.id}</b>
+        <div class="meta">${new Date(b.start).toLocaleString()} → ${new Date(b.end).toLocaleTimeString()}</div>
+        ${b.confirmation ? `<div class="ai-note">${b.confirmation}</div>`:''}
+        ${b.risk_note ? `<div class="ai-note">🔎 ${b.risk_note}</div>`:''}
+        ${b.weather_note ? `<div class="ai-note">🌦 ${b.weather_note}</div>`:''}`;
+      el.appendChild(div);
+    });
+  }catch(e){ el.innerHTML = '<p class="muted">Error loading bookings.</p>'; }
+}
+
+loadBookings();
+</script>
+</body>
+</html>
